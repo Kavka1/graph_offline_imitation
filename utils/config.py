@@ -13,7 +13,7 @@ import yaml
 
 from graph_offline_imitation                import networks, processors, datasets, algs, envs
 from graph_offline_imitation.utils          import schedules
-from graph_offline_imitation.utils.trainer  import Trainer, OnlineTrainer
+from graph_offline_imitation                import trainers
 from graph_offline_imitation.utils.utils    import flatten_dict
 
 DEFAULT_NETWORK_KEY = "network"
@@ -25,6 +25,7 @@ def get_env(env: gym.Env, env_kwargs: Dict, wrapper: Optional[gym.Env], wrapper_
         env = vars(envs)[env](**env_kwargs)
     except KeyError:
         env = gym.make(env, **env_kwargs)
+    
     if wrapper is not None:
         env = vars(envs)[wrapper](env, **wrapper_kwargs)
     return env
@@ -132,6 +133,8 @@ class Config(BareConfig):
         self.config["schedule"] = None
         self.config["schedule_kwargs"] = {}
 
+        # Trainer args
+        self.config['trainer']  = None
         self.config["trainer_kwargs"] = {}
 
     @property
@@ -259,7 +262,8 @@ class Config(BareConfig):
         else:
             eval_env = self.get_eval_env()
         # Return the trainer...
-        return Trainer(eval_env, **self["trainer_kwargs"])
+        trainer_class   =   vars(trainers)[self['trainer']]
+        return trainer_class(eval_env, **self["trainer_kwargs"])
 
 
 
@@ -304,16 +308,3 @@ class OnlineConfig(Config):
             **self["alg_kwargs"],
         )
         return algo
-
-    def get_trainer(self):
-        assert self.parsed
-        # Returns a Trainer Object that can be used to train a model
-        if (
-            self["trainer_kwargs"].get("eval_fn", None) is None
-            or self["trainer_kwargs"].get("subproc_eval", False) == True
-        ):
-            eval_env = None
-        else:
-            eval_env = self.get_eval_env()
-        # Return the trainer...
-        return OnlineTrainer(eval_env, **self["trainer_kwargs"])

@@ -9,9 +9,8 @@ import numpy as np
 import torch
 
 from graph_offline_imitation.algs.base import Algorithm
-
-from . import evaluate
-from .logger import Logger
+from graph_offline_imitation.utils import evaluate
+from graph_offline_imitation.utils.logger import Logger
 
 MAX_VALID_METRICS = {"reward", "accuracy", "success", "is_success"}
 
@@ -59,7 +58,7 @@ def _worker_init_fn(worker_id: int) -> None:
     random.seed(seed)
 
 
-class Trainer(object):
+class OfflineTrainer(object):
     def __init__(
         self,
         eval_env: Optional[gym.Env] = None,
@@ -381,7 +380,7 @@ class Trainer(object):
 
 
 
-class OnlineTrainer(Trainer):
+class OnlineTrainer(OfflineTrainer):
     def __init__(
         self, 
         eval_env: Optional[gym.Env] = None,

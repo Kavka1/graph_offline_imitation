@@ -126,3 +126,11 @@ class Logger(object):
     def close(self) -> None:
         for writer in self.writers:
             writer.close()
+
+    def render(self, step: int) -> None:
+        fst_writer = self.writers[0]
+        values     = fst_writer.values
+        print(f"| - Step: {step} - |")
+        for key, val in values.items():
+            print(f"{key:>30} - {val:20}")
+        print(f'- - - - - - - - - - -\n')

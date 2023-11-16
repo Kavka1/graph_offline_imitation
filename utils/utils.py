@@ -27,6 +27,8 @@ def to_tensor(batch: Any) -> Any:
         if batch.dtype == np.float64:
             batch = batch.astype(np.float32)
         batch = torch.from_numpy(batch)
+    elif isinstance(batch, torch.Tensor):
+        pass
     else:
         raise ValueError("Unsupported type passed to `to_tensor`")
     return batch
@@ -139,6 +141,16 @@ def contains_tensors(batch: Any) -> bool:
         return any([contains_tensors(v) for v in batch.values()])
     if isinstance(batch, list):
         return any([contains_tensors(v) for v in batch])
+    elif isinstance(batch, torch.Tensor):
+        return True
+    else:
+        return False
+
+def all_tensors(batch: Any) -> bool:
+    if isinstance(batch, dict):
+        return all([contains_tensors(v) for v in batch.values()])
+    if isinstance(batch, list):
+        return all([contains_tensors(v) for v in batch])
     elif isinstance(batch, torch.Tensor):
         return True
     else:

@@ -250,7 +250,7 @@ class DiagonalGaussianMLPActor(nn.Module):
         dist_class = SquashedNormal if self.squash_normal else distributions.Normal
         dist = dist_class(mu, log_std.exp())
         assert len(mu.shape) > 1, "Must used batched."
-        dist = distributions.Independent(dist, 1)  # Combine logprob on last dim.
+        # dist = distributions.Independent(dist, 1)  # Combine logprob on last dim.
         return dist
 
 

@@ -22,15 +22,15 @@ class ContrastiveGoalCritic(nn.Module):
         **kwargs,
     ) -> None:
         super().__init__()
-        assert isinstance(observation_space, gym.Space.Box) and len(observation_space.shape) == 1
+        assert isinstance(observation_space, gym.spaces.Box) and len(observation_space.shape) == 1
         
         self.repr_dim      = repr_dim
         self.ensemble_size = ensemble_size
         self.repr_norm     = repr_norm
         self.repr_norm_temp= repr_norm_temp
         
-        input_dim_for_sa   = observation_space.shape[0] + action_space.shape[0]
-        input_dim_for_g    = observation_space.shape[0]
+        input_dim_for_sa   = observation_space.shape[0] // 2 + action_space.shape[0]
+        input_dim_for_g    = observation_space.shape[0] // 2
 
         if self.ensemble_size > 1:
             self.encoder_sa= EnsembleMLP(input_dim_for_sa, repr_dim, ensemble_size=ensemble_size, **kwargs)
@@ -60,9 +60,9 @@ class ContrastiveGoalCritic(nn.Module):
         return sa_repr, g_repr
 
     def combine_repr(self, sa_repr: torch.Tensor, g_repr: torch.Tensor) -> torch.Tensor:
-        if len(sa_repr.shape==3) and len(g_repr.shape==3) and sa_repr.shape[0] == self.ensemble_size:
+        if len(sa_repr.shape)==3 and len(g_repr.shape)==3 and sa_repr.shape[0] == self.ensemble_size:
             return torch.einsum('eiz,ejz->eij', sa_repr, g_repr)
-        elif len(sa_repr.shape==2) and len(g_repr.shape==2):
+        elif len(sa_repr.shape)==2 and len(g_repr.shape)==2:
             return torch.einsum('iz,jz->ij', sa_repr, g_repr)
         else:
             raise ValueError
@@ -79,10 +79,10 @@ class ContrastiveRLNetwork(nn.Module):
         action_space:      gym.Space,
         actor_class:       Union[str, Type[nn.Module]],
         value_class:       Union[str, Type[nn.Module]],
-        encoder_class:     Union[str, Type[nn.Module]],
-        actor_kwargs:      Dict = None,
-        value_kwargs:      Dict = None,
-        encoder_kwargs:    Dict = None,
+        encoder_class:     Union[str, Type[nn.Module]] = None,
+        actor_kwargs:      Dict = {},
+        value_kwargs:      Dict = {},
+        encoder_kwargs:    Dict = {},
         concat_keys:       List[str] = [
             "observation",
             "achieved_goal",
@@ -154,11 +154,11 @@ class ContrastiveRLNetwork(nn.Module):
         return self._value
     
     def format_policy_obs(self, obs: torch.Tensor) -> torch.Tensor:
+        assert ('observation' not in self.concat_keys and 'achieved_goal' in self.concat_keys and 'desired_goal' in self.concat_keys)
         return torch.concat([obs[k] for k in self.concat_keys], dim=self.forward_concat_dim)
     
     def format_value_input(self, obs: Dict, action: torch.Tensor) -> Tuple[torch.Tensor]:
-        assert not ('observation' in self.concat_keys and 'achieved_goal' in self.concat_keys)
-        assert 'achieved_goal' in obs.keys()
-        achieved_goal = obs['achieved_goal']
+        assert ('achieved_goal' in obs.keys() and 'desired_goal' in obs.keys())
+        obs_goal      = obs['achieved_goal']
         desired_goal  = obs['desired_goal']
-        return achieved_goal, action, desired_goal
+        return obs_goal, action, desired_goal

@@ -25,7 +25,7 @@ class OffPolicyAlgorithm(Algorithm):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        assert issubclass(self.dataset_class, ReplayBuffer)
+        # assert issubclass(self.dataset_class, ReplayBuffer)
         self.offline_steps = offline_steps
         self.env_freq = env_freq
         self.random_steps = random_steps

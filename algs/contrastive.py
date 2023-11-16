@@ -50,10 +50,10 @@ class ContrastiveRL(OffPolicyAlgorithm):
         
     def setup_optimizers(self) -> None:
         if self.encoder_gradients == "critic" or self.encoder_gradients == "both":
-            critic_params = itertools.chain(self.network.critic.parameters(), self.network.encoder.parameters())
+            critic_params = itertools.chain(self.network.value.parameters(), self.network.encoder.parameters())
             actor_params = self.network.actor.parameters()
         elif self.encoder_gradients == "actor":
-            critic_params = self.network.critic.parameters()
+            critic_params = self.network.value.parameters()
             actor_params = itertools.chain(self.network.actor.parameters(), self.network.encoder.parameters())
         else:
             raise ValueError("Unsupported value of encoder_gradients")
@@ -74,13 +74,13 @@ class ContrastiveRL(OffPolicyAlgorithm):
         # update actor
         dist            = self.network.actor(obs_with_goal.detach() if self.encoder_gradients == "critic" else obs_with_goal)
         new_action      = dist.rsample()
-        log_prob        = dist.log_prob(new_action)
-        q_action        = self.network.critic(obs, new_action, goal)    # [E, B, B]
-        assert q_action.shape[0] == self.network.critic.ensemble_size
-        min_q_action    = torch.min(q_action, dim=0, keepdim=False)
+        log_prob        = dist.log_prob(new_action).mean(dim=-1)
+        q_action        = self.network.value(obs, new_action, goal)    # [E, B, B]
+        assert q_action.shape[0] == self.network.value.ensemble_size
+        min_q_action    = torch.min(q_action, dim=0, keepdim=False).values
         actor_q_loss    = torch.exp(self.log_alpha).detach() * log_prob - torch.diag(min_q_action)
         assert 0 < self.bc_coef <= 1.0
-        actor_bc_loss   = - 1.0 * dist.log_prob(action)
+        actor_bc_loss   = - 1.0 * dist.log_prob(action).mean(dim=-1)
         actor_loss      = (self.bc_coef * actor_bc_loss + (1 - self.bc_coef) * actor_q_loss).mean()
         self.optim['actor'].zero_grad(set_to_none=True)
         actor_loss.backward()
@@ -94,8 +94,8 @@ class ContrastiveRL(OffPolicyAlgorithm):
             self.optim['log_alpha'].step()
 
         # update critic
-        I       = torch.eye(obs.shape[0])
-        logits  = self.network.critic(obs, action, goal)
+        logits  = self.network.value(obs, action, goal)
+        I       = torch.eye(obs.shape[0]).expand_as(logits).to(logits.device)
         loss_fn = lambda lg, label: torch.nn.functional.binary_cross_entropy_with_logits(lg, label)
         critic_loss = torch.vmap(loss_fn, in_dims=0, out_dims=0)(logits, I)    
         critic_loss = torch.mean(critic_loss) # 
@@ -111,15 +111,15 @@ class ContrastiveRL(OffPolicyAlgorithm):
 
         return dict(
             actor_loss      = actor_loss.item(),
-            actor_q_loss    = actor_q_loss.item(),
-            actor_bc_loss   = actor_bc_loss.item(),
+            actor_q_loss    = actor_q_loss.mean().item(),
+            actor_bc_loss   = actor_bc_loss.mean().item(),
 
             alpha_loss      = alpha_loss.item() if self.adaptive_entropy_coefficient else 0.,
             alpha           = self.log_alpha.exp().item(),
 
             critic_loss          = critic_loss.item(),
-            binary_accuracy      = torch.mean((mean_logits > 0) == I).item(),
-            categorical_accuracy = torch.mean(correct).item(),
+            binary_accuracy      = torch.mean(((mean_logits > 0) == I).type(torch.float32)).item(),
+            categorical_accuracy = torch.mean((correct).type(torch.float32)).item(),
             logits_pos           = logits_pos.item(),
             logits_neg           = logits_neg.item(),
             logsumexp            = logsumexp.mean().item()
@@ -127,9 +127,9 @@ class ContrastiveRL(OffPolicyAlgorithm):
 
     def _predict(self, batch: Dict, sample: bool = False) -> torch.Tensor:
         with torch.no_grad():
-            obs  = self.network.format_policy_obs(batch["obs"])
-            z    = self.network.encoder(obs)
-            dist = self.network.actor(z)
+            obs_with_goal   = self.network.format_policy_obs(batch["obs"])
+            z               = self.network.encoder(obs_with_goal)
+            dist            = self.network.actor(z)
             if isinstance(dist, torch.distributions.Distribution):
                 action = dist.sample() if sample else dist.loc
             elif torch.is_tensor(dist):
