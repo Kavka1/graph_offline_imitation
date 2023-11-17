@@ -1,6 +1,7 @@
 import argparse
 import os
 import subprocess
+from pathlib import Path
 
 from graph_offline_imitation.utils.config import Config
 
@@ -23,22 +24,24 @@ def try_wandb_setup(path, config):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", "-c", type=str, default="/home/PJLAB/kang/proj/graph_offline_imitation/configs/oi_mujoco_ant_exp_rand_10/dwbc.yaml")
-    parser.add_argument("--path", "-p", type=str, default="/home/PJLAB/kang/proj/graph_offline_imitation/results/oi_mujoco_ant_exp_rand_10/dwbc/")
-    # parser.add_argument('--seed', '-s', type=int, default=10)
+    parser.add_argument("--path", "-p", type=str, default="oi_mujoco_ant_exp_rand_10/dwbc")
     parser.add_argument('--notation', '-n', type=str, default=None)
     parser.add_argument("--device", "-d", type=str, default="auto")
-
     parser.add_argument("--seeds", '-s', type=int, nargs='+', default=[10])
+    args     = parser.parse_args()
 
-    args = parser.parse_args()
+    pth         = args.path    
+    args.config = f"{Path(__file__).resolve().parent}/../configs/{pth}.yaml"
+    args.path   = f"{Path(__file__).resolve().parent}/../results/{pth}/"
+
+    org_path    = args.path
 
     for seed in args.seeds:
         # add seed to path
         if args.notation:
-            args.path = args.path[:-1] + f'_{seed}_{args.notation}/'
+            args.path = org_path[:-1] + f'_{seed}_{args.notation}/'
         else:
-            args.path = args.path[:-1] + f'_{seed}/'
+            args.path = org_path[:-1] + f'_{seed}/'
         config = Config.load(args.config)
         # update config with result path and seed
         config.update(dict(seed=seed, res_path=args.path))

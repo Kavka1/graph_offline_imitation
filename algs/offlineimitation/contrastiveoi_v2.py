@@ -6,20 +6,21 @@ import torch
 import gym
 
 from graph_offline_imitation.processors.base            import Processor, IdentityProcessor
-from graph_offline_imitation.networks.contrastiveoi     import ContrastiveOfflineImitationNetwork
+from graph_offline_imitation.networks.contrastiveoi_v2  import ContrastiveOfflineImitationV2Network
 from graph_offline_imitation.algs.off_policy_algorithm  import OffPolicyAlgorithm
 from graph_offline_imitation.utils                      import utils
 
 
-class ContrastiveOfflineImitation(OffPolicyAlgorithm):
+class ContrastiveOfflineImitationV2(OffPolicyAlgorithm):
     def __init__(
         self,
         *args,
         expert_bc_coef:     float    = 0.5,
-        repr_penalty_coef:  float    = 1,
         adv_temperature:    float    = 1,
         adv_clip:           float    = 100,
         sparse_adv_lb:      float    = None,
+        repr_penalty_coef:  float    = 0.001,
+        pess_coef:          float    = 1,
         exp_proximity_aggregation:  str = 'min',
         encoder_gradients:  str      = "both",
         **kwargs,
@@ -30,11 +31,12 @@ class ContrastiveOfflineImitation(OffPolicyAlgorithm):
         assert exp_proximity_aggregation in ('mean', 'min', 'max')
         self.encoder_gradients   = encoder_gradients        
         self.expert_bc_coef             =   expert_bc_coef
-        self.repr_penalty_coef          =   repr_penalty_coef
         self.adv_temperature            =   adv_temperature
         self.adv_clip                   =   adv_clip
         self.sparse_adv_lb              =   sparse_adv_lb
         self.exp_proximity_aggregation  =   exp_proximity_aggregation
+        self.repr_penalty_coef          =   repr_penalty_coef
+        self.pess_coef                  =   pess_coef
         self.action_range        = [
             float(self.expert_processor.action_space.low.min()),
             float(self.expert_processor.action_space.high.max()),
@@ -97,7 +99,7 @@ class ContrastiveOfflineImitation(OffPolicyAlgorithm):
         self.env_step = self._empty_step
 
     def setup_network(self, network_class: Type[torch.nn.Module], network_kwargs: Dict) -> None:
-        assert network_class is ContrastiveOfflineImitationNetwork, "Must use ContrastiveOfflineImitationNetwork with ContrastiveRL."
+        assert network_class is ContrastiveOfflineImitationV2Network, "Must use ContrastiveOfflineImitationNetwork with ContrastiveRL."
         self.network = network_class(
             unlabel_observation_space   =   self.unlabel_processor.observation_space,
             expert_observation_space    =   self.expert_processor.observation_space,
@@ -107,17 +109,14 @@ class ContrastiveOfflineImitation(OffPolicyAlgorithm):
         
     def setup_optimizers(self) -> None:
         if self.encoder_gradients == "critic" or self.encoder_gradients == "both":
-            vfunc_params    = itertools.chain(self.network.vfunc.parameters(), self.network.obs_encoder.parameters(), self.network.goal_encoder.parameters())
             qfunc_params    = itertools.chain(self.network.qfunc.parameters(), self.network.obs_encoder.parameters(), self.network.goal_encoder.parameters())
             policy_params   = self.network.policy.parameters()
         elif self.encoder_gradients == "actor":
-            vfunc_params    = self.network.vfunc.parameters()
             qfunc_params    = self.network.qfunc.parameters()
             policy_params   = itertools.chain(self.network.policy.parameters(), self.network.obs_encoder.parameters(), self.network.goal_encoder.parameters())
         else:
             raise ValueError("Unsupported value of encoder_gradients")
         self.optim["policy"]    = self.optim_class(policy_params, **self.optim_kwargs)
-        self.optim['vfunc']     = self.optim_class(vfunc_params, **self.optim_kwargs)
         self.optim["qfunc"]     = self.optim_class(qfunc_params, **self.optim_kwargs)
 
     def format_expert_batch(self, batch: Any) -> Any:
@@ -153,82 +152,68 @@ class ContrastiveOfflineImitation(OffPolicyAlgorithm):
         exp_obs, unl_obs            = self.network.obs_encoder(exp_obs), self.network.obs_encoder(unl_obs)
         unl_goal                    = self.network.goal_encoder(unl_goal)
 
-        # update v func
-        logits_v, s_repr_v, g_repr_v  = self.network.vfunc(unl_obs, unl_goal, return_repr=True)
-        I                   = torch.eye(unl_obs.shape[0]).expand_as(logits_v).to(logits_v.device)
-        loss_fn_v           = lambda lg, label: torch.nn.functional.cross_entropy(lg, label)
-
-        s_repr_v            = torch.norm(s_repr_v, p=2, dim=-1, keepdim=False).mean()
-        g_repr_v            = torch.norm(g_repr_v, p=2, dim=-1, keepdim=False).mean()
-
-        vfunc_loss          = torch.vmap(loss_fn_v, in_dims=0, out_dims=0)(logits_v, I)
-        vfunc_loss          = torch.mean(vfunc_loss) + self.repr_penalty_coef * s_repr_v + self.repr_penalty_coef * g_repr_v
-        self.optim['vfunc'].zero_grad(set_to_none=True)
-        vfunc_loss.backward()
-        self.optim['vfunc'].step()
-
-        # update q func
+        ## update q func
+        # cross entropy
         logits_q, sa_repr_q, g_repr_q = self.network.qfunc(unl_obs, unl_act, unl_goal, return_repr=True)
-        I               = torch.eye(unl_obs.shape[0]).expand_as(logits_q).to(logits_q.device)
-        loss_fn_q       = lambda lg, label: torch.nn.functional.cross_entropy(lg, label)
+        I                             = torch.eye(unl_obs.shape[0]).expand_as(logits_q).to(logits_q.device)
+        loss_fn_q                     = lambda lg, label: torch.nn.functional.cross_entropy(lg, label)
+        loss_qfunc_ce                 = torch.vmap(loss_fn_q, in_dims=0, out_dims=0)(logits_q, I).mean()
+        # representation regularization
+        sa_repr_q                     = torch.norm(sa_repr_q, p=2, dim=-1, keepdim=False).mean()
+        g_repr_q                      = torch.norm(g_repr_q, p=2, dim=-1, keepdim=False).mean()
+        loss_qfunc_repr_reg           = sa_repr_q + g_repr_q
+        # pessimistic estimation on (unl_obs, unl_act, exp_obs)
+        logits_q_for_mix              = (self.network.qfunc(unl_obs, unl_act, exp_obs).mean(dim=0, keepdim=False))**2   #   [B_unl, B_exp]
+        loss_qfunc_pess               = logits_q_for_mix.mean()
 
-        sa_repr_q       = torch.norm(sa_repr_q, p=2, dim=-1, keepdim=False).mean()
-        g_repr_q        = torch.norm(g_repr_q, p=2, dim=-1, keepdim=False).mean()
-
-        qfunc_loss      = torch.vmap(loss_fn_q, in_dims=0, out_dims=0)(logits_q, I)
-        qfunc_loss      = torch.mean(qfunc_loss) + self.repr_penalty_coef * sa_repr_q + self.repr_penalty_coef * g_repr_q
+        qfunc_loss                    = loss_qfunc_ce + self.repr_penalty_coef * loss_qfunc_repr_reg + self.pess_coef * loss_qfunc_pess
         self.optim['qfunc'].zero_grad(set_to_none=True)
         qfunc_loss.backward()
         self.optim['qfunc'].step()
 
-        # update policy
+        ## update policy
+        # expert behavior cloning
         dist_exp        = self.network.policy(exp_obs)
-        bc_loss_exp     = - dist_exp.log_prob(exp_act).mean(dim=-1)
-
+        bc_loss_exp     = - dist_exp.log_prob(exp_act).sum(dim=-1)
+        dist_unl        = self.network.policy(unl_obs)
+        # unlable behavior cloning
         with torch.no_grad():
-            exp_proximity_sa             =   self.network.qfunc(unl_obs, unl_act, exp_obs)              #   [E, B_unl, B_exp]
-            exp_proximity_sa_cons        =   torch.min(exp_proximity_sa, dim=0, keepdim=False).values   #   [B_unl, B_exp]
+            exp_proximity_s_unl_a        =   self.network.qfunc(unl_obs, unl_act, exp_obs)                   #   [E, B_unl, B_exp]
+            exp_proximity_s_unl_a        =   torch.min(exp_proximity_s_unl_a, dim=0, keepdim=False).values   #   [B_unl, B_exp]
 
-            exp_proximity_s              =   self.network.vfunc(unl_obs, exp_obs)                
-            exp_proximity_s_cons         =   torch.min(exp_proximity_s, dim=0, keepdim=False).values
+            unl_act_new                  =   dist_unl.sample()
+            exp_proximity_s_new_a        =   self.network.qfunc(unl_obs, unl_act_new, exp_obs)               #   [E, B_unl, B_exp]
+            exp_proximity_s_new_a        =   torch.min(exp_proximity_s_new_a, dim=0, keepdim=False).values   #   [B_unl, B_exp]
 
             if self.exp_proximity_aggregation == 'mean':
-                exp_proximity_sa_cons    =   exp_proximity_sa_cons.mean(dim=-1, keepdim=False)          #   [B_unl]
-                exp_proximity_s_cons     =   exp_proximity_s_cons.mean(dim=-1, keepdim=False)
+                exp_proximity_s_unl_a_agg     =   exp_proximity_s_unl_a.mean(dim=-1, keepdim=False)         #   [B_unl]
+                exp_proximity_s_new_a_agg     =   exp_proximity_s_new_a.mean(dim=-1, keepdim=False)
             elif self.exp_proximity_aggregation == 'min':
-                exp_proximity_sa_cons    =   exp_proximity_sa_cons.min(dim=-1, keepdim=False)
-                exp_proximity_s_cons     =   exp_proximity_s_cons.min(dim=-1, keepdim=False)
+                exp_proximity_s_unl_a_agg     =   exp_proximity_s_unl_a.min(dim=-1, keepdim=False)          #   [B_unl]
+                exp_proximity_s_new_a_agg     =   exp_proximity_s_new_a.min(dim=-1, keepdim=False)
             elif self.exp_proximity_aggregation == 'max':
-                exp_proximity_sa_cons    =   exp_proximity_sa_cons.max(dim=-1, keepdim=False)
-                exp_proximity_s_cons     =   exp_proximity_s_cons.max(dim=-1, keepdim=False)
+                exp_proximity_s_unl_a_agg     =   exp_proximity_s_unl_a.max(dim=-1, keepdim=False)          #   [B_unl]
+                exp_proximity_s_new_a_agg     =   exp_proximity_s_new_a.max(dim=-1, keepdim=False)
             else:
                 raise ValueError
 
-            exp_proximity_adv            =   exp_proximity_sa_cons - exp_proximity_s_cons       #   [B_unl]
-            exp_proximity_adv            =   exp_proximity_adv / self.adv_temperature
+            exp_proximity_adv            =   exp_proximity_s_unl_a_agg - exp_proximity_s_new_a_agg          #   [B_unl]
+            exp_proximity_adv            =   torch.exp(exp_proximity_adv / self.adv_temperature)
             exp_proximity_adv_clip       =   torch.clamp(exp_proximity_adv, max=self.adv_clip)
 
             if self.sparse_adv_lb is not None:
-                gate_adv                 =  torch.tensor(exp_proximity_adv_clip.clone().detach() > self.sparse_adv_lb, dtype=torch.float32).to(exp_proximity_adv_clip.device)
+                gate_adv                 =  torch.ones_like(exp_proximity_adv_clip, dtype=torch.float32).to(exp_proximity_adv_clip.device)
+                gate_adv[exp_proximity_adv_clip.clone().detach() < self.sparse_adv_lb] = 0.
             else:
                 gate_adv                 =  torch.ones_like(exp_proximity_adv_clip, dtype=torch.float32).to(exp_proximity_adv_clip.device)
 
-        dist_unl        = self.network.policy(unl_obs)
-        bc_loss_unl     = - gate_adv * exp_proximity_adv_clip * dist_unl.log_prob(unl_act).mean(dim=-1)
+        bc_loss_unl     = - (gate_adv * exp_proximity_adv_clip).detach() * dist_unl.log_prob(unl_act).sum(dim=-1)
 
-        policy_loss     = self.expert_bc_coef * bc_loss_exp.mean() + (1 - self.expert_bc_coef) * bc_loss_unl.mean()
+        policy_loss     = self.expert_bc_coef * bc_loss_exp.mean() + bc_loss_unl.mean()
         self.optim['policy'].zero_grad(set_to_none=True)
         policy_loss.backward()
         self.optim['policy'].step()
-
-        # v func statistics
-        mean_logits_v           =   torch.mean(logits_v, dim=0, keepdim=False)  # [B, B]
-        correct_v               =   torch.argmax(mean_logits_v, dim=1) == torch.argmax(I, dim=1)
-        binary_accuracy_v       =   torch.mean(((mean_logits_v > 0) == I).type(torch.float32)).item()
-        categorical_accuracy_v  =   torch.mean(correct_v.type(torch.float32)).item()
-        logits_pos_v            =   (torch.sum(mean_logits_v * I) / torch.sum(I)).item()
-        logits_neg_v            =   (torch.sum(mean_logits_v * (1 - I)) / torch.sum(1 - I)).item()
-        logsumexp_v             =   (torch.logsumexp(mean_logits_v[:, :], dim=1) ** 2).mean().item()
+        
         # q func statistics
         mean_logits_q           =   torch.mean(logits_q, dim=0, keepdim=False)
         correct_q               =   torch.argmax(mean_logits_q, dim=1) == torch.argmax(I, dim=1)
@@ -237,38 +222,33 @@ class ContrastiveOfflineImitation(OffPolicyAlgorithm):
         logits_pos_q            =   (torch.sum(mean_logits_q * I) / torch.sum(I)).item()
         logits_neg_q            =   (torch.sum(mean_logits_q * (1 - I)) / torch.sum(1 - I)).item()
         logsumexp_q             =   (torch.logsumexp(mean_logits_q[:, :], dim=1) ** 2).mean().item()
-        # policy statistics
-
 
         return dict(
             loss_q                  = qfunc_loss.item(),
-            s_repr_v                = s_repr_v.item(),
-            g_repr_v                = g_repr_v.item(),
+            loss_qfunc_ce           = loss_qfunc_ce.item(),
+            loss_qfunc_repr_reg     = loss_qfunc_repr_reg.item(),
+            loss_qfunc_pess         = loss_qfunc_pess.item(),
+
+            loss_policy             = policy_loss.item(),
+            loss_policy_exp_bc      = bc_loss_exp.mean().item(),
+            loss_policy_unl_bc      = bc_loss_unl.mean().item(),
+
             binary_accuracy_q       = binary_accuracy_q,
             categorical_accuracy_q  = categorical_accuracy_q,
             logits_pos_q            = logits_pos_q,
             logits_neg_q            = logits_neg_q,
             logsumexp_q             = logsumexp_q,
 
-            loss_v                  = vfunc_loss.item(),
             sa_repr_q               = sa_repr_q.item(),
             g_repr_q                = g_repr_q.item(),
-            binary_accuracy_v       = binary_accuracy_v,
-            categorical_accuracy_v  = categorical_accuracy_v,
-            logits_pos_v            = logits_pos_v,
-            logits_neg_v            = logits_neg_v,
-            logsumexp_v             = logsumexp_v,
 
-            loss_policy             = policy_loss.item(),
-            loss_policy_exp_bc      = bc_loss_exp.mean().item(),
-            loss_policy_unl_bc      = bc_loss_unl.mean().item(),
+            exp_proximity_s_unl_a_mean    = exp_proximity_s_unl_a.mean().item(),
+            exp_proximity_s_unl_a_max     = exp_proximity_s_unl_a.max().item(),
+            exp_proximity_s_unl_a_min     = exp_proximity_s_unl_a.min().item(),
 
-            exp_proximity_sa_mean   = exp_proximity_sa_cons.mean().item(),
-            exp_proximity_sa_max    = exp_proximity_sa_cons.max().item(),
-            exp_proximity_sa_min    = exp_proximity_sa_cons.min().item(),
-            exp_proximity_s_mean    = exp_proximity_s_cons.mean().item(),
-            exp_proximity_s_max     = exp_proximity_s_cons.max().item(),
-            exp_proximity_s_min     = exp_proximity_s_cons.min().item(),
+            exp_proximity_s_new_a_mean    = exp_proximity_s_new_a.mean().item(),
+            exp_proximity_s_new_a_max     = exp_proximity_s_new_a.max().item(),
+            exp_proximity_s_new_a_min     = exp_proximity_s_new_a.min().item(),
             
             exp_proximity_adv_mean      = exp_proximity_adv.mean().item(),
             exp_proximity_adv_max       = exp_proximity_adv.max().item(),
@@ -278,7 +258,7 @@ class ContrastiveOfflineImitation(OffPolicyAlgorithm):
             exp_proximity_adv_clip_max     = exp_proximity_adv_clip.max().item(),
             exp_proximity_adv_clip_min     = exp_proximity_adv_clip.min().item(),
 
-            exponential_adv_gate_mean    = gate_adv.mean().item()
+           adv_gate_mean                   = gate_adv.mean().item()
         )
 
     def _predict(self, batch: Dict, sample: bool = False) -> torch.Tensor:
@@ -306,9 +286,7 @@ class ContrastiveOfflineImitation(OffPolicyAlgorithm):
         is_np = not utils.contains_tensors(batch)
         if not is_batched:
             batch = utils.unsqueeze(batch, 0)
-        
         batch   = self.format_expert_batch(batch)   # org: format batch
-
         pred    = self._predict(batch, **kwargs)
         if not is_batched:
             pred = utils.get_from_batch(pred, 0)

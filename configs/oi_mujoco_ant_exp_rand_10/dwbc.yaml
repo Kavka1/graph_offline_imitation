@@ -55,7 +55,7 @@ trainer_kwargs: # Arguments given to trainer
   log_freq: 1000 # How often to log values
   eval_freq: 10000 # How often to run evals
   profile_freq: 1000
-  checkpoint_freq: 100000
+  checkpoint_freq: 200000
   eval_fn: eval_policy
   eval_kwargs:
     num_ep: 20 # Number of enviornment episodes to run for evaluation, or -1 if none should be run.

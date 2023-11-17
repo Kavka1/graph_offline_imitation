@@ -1,17 +1,18 @@
-alg: ContrastiveOfflineImitation
+alg: ContrastiveOfflineImitationV2
 alg_kwargs:
-  expert_bc_coef: 0.5
+  expert_bc_coef: 1
   repr_penalty_coef: 0.
+  pess_coef: 0.01
   adv_temperature: 1
   adv_clip: 10
-  sparse_adv_lb: 0.
+  sparse_adv_lb: 1.
   exp_proximity_aggregation: mean
 
 optim: Adam
 optim_kwargs:
   lr: 0.0003
 
-network: ContrastiveOfflineImitationNetwork
+network: ContrastiveOfflineImitationV2Network
 network_kwargs:
   policy_class: DiagonalGaussianMLPActor
   policy_kwargs:
@@ -22,14 +23,6 @@ network_kwargs:
     squash_normal: False
     act: ["import", "torch.nn", "ReLU"]
     output_act: ["import", "torch.nn", "Tanh"]
-  vfunc_class: ContrastiveV
-  vfunc_kwargs:
-    repr_dim: 16
-    ensemble_size: 2
-    repr_norm: False
-    repr_norm_temp: False
-    ortho_init: False
-    output_gain: none
   qfunc_class: ContrastiveQ
   qfunc_kwargs:
     repr_dim: 16
@@ -63,7 +56,7 @@ trainer_kwargs: # Arguments given to trainer
   log_freq: 1000 # How often to log values
   eval_freq: 10000 # How often to run evals
   profile_freq: 1000
-  checkpoint_freq: 100000
+  checkpoint_freq: 200000
   eval_fn: eval_policy
   eval_kwargs:
     num_ep: 20 # Number of enviornment episodes to run for evaluation, or -1 if none should be run.
