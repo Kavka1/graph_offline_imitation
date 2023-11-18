@@ -7,67 +7,35 @@ import numpy as np
 import torch
 import gym
 
-from graph_offline_imitation.utils.logger   import Logger
-from .base                                  import OfflineTrainer, log_from_dict, log_wrapper, time_wrapper, MAX_VALID_METRICS, _worker_init_fn
+from graph_offline_imitation.utils.logger                   import Logger
+from graph_offline_imitation.trainers.base                  import log_from_dict, log_wrapper, time_wrapper, MAX_VALID_METRICS
+from graph_offline_imitation.trainers.offlineimitation.base import OfflineImitationTrainer
 
 
-class OfflineImitationTrainer(OfflineTrainer):
+class SMODICETrainer(OfflineImitationTrainer):
     def __init__(
         self, 
-        eval_env: Optional[gym.Env] = None,
-        expert_dataloader_kwargs: Dict = {},
-        unlabel_dataloader_kwargs: Dict = {},
+        eval_env,
+        disc_steps: int,
         **kwargs,
     ) -> None:
-        self._expert_dataloader       = None
-        self.expert_dataloader_kwargs = expert_dataloader_kwargs
-        self._unlabel_dataloader      = None
-        self.unlabel_dataloader_kwargs= unlabel_dataloader_kwargs
+        self.disc_steps = disc_steps
         super().__init__(eval_env, **kwargs)
 
-    @property
-    def train_dataloader(self) -> Any:
-        raise NotImplementedError(f"the offline imitation setting separates expert dataloader and unlabel dataloader.")
+    def warmup_discriminator(self, ) -> None:
+        # warm update discriminator before the policy / value learning
+        total_disc_step = 0
+        for expert_batch, unlabel_batch in zip(self.expert_dataloader, self.unlabel_dataloader):
+            expert_batch = self.model.format_expert_batch(expert_batch)
+            unlabel_batch= self.model.format_unlabel_batch(unlabel_batch)
 
-    @property
-    def expert_dataloader(self) -> torch.utils.data.DataLoader:
-        if not hasattr(self.model, "expert_dataset"):
-            self.model.setup_datasets(self.model.env, self.total_steps)
+            loss_disc_dict  = self.model.train_discriminator_step(expert_batch, unlabel_batch)
+            loss_log        = loss_disc_dict['loss_discriminator']
+            total_disc_step += 1
 
-        if self.model.expert_dataset is None:
-            return None
-        
-        if self._expert_dataloader is None:
-            shuffle     = not isinstance(self.model.expert_dataset, torch.utils.data.IterableDataset)
-            pin_memory  = self.model.device.type == "cuda"
-            self._expert_dataloader = torch.utils.data.DataLoader(
-                self.model.expert_dataset,
-                shuffle         =   shuffle,
-                pin_memory      =   pin_memory,
-                worker_init_fn  =   _worker_init_fn,
-                **self.expert_dataloader_kwargs,
-            )
-        return self._expert_dataloader
-
-    @property
-    def unlabel_dataloader(self) -> torch.utils.data.DataLoader:
-        if not hasattr(self.model, "unlabel_dataset"):
-            self.model.setup_datasets(self.model.env, self.total_steps)
-
-        if self.model.unlabel_dataset is None:
-            return None
-        
-        if self._unlabel_dataloader is None:
-            shuffle     = not isinstance(self.model.unlabel_dataset, torch.utils.data.IterableDataset)
-            pin_memory  = self.model.device.type == "cuda"
-            self._unlabel_dataloader = torch.utils.data.DataLoader(
-                self.model.unlabel_dataset,
-                shuffle         =   shuffle,
-                pin_memory      =   pin_memory,
-                worker_init_fn  =   _worker_init_fn,
-                **self.unlabel_dataloader_kwargs,
-            )
-        return self._unlabel_dataloader
+            print(f'[Warming up discriminator]: Total step {total_disc_step} - Loss {loss_log}]')
+            if total_disc_step > self.disc_steps:
+                break
 
     def train(self, path: str):
         # Prepare the model for training by initializing the optimizers and the schedulers
@@ -80,11 +48,9 @@ class OfflineImitationTrainer(OfflineTrainer):
 
         # First, we should detect if the path already contains a model and a checkpoint
         if os.path.exists(os.path.join(path, "final_model.pt")):
-            # If so, we can finetune from that initial checkpoint. When we do this we should load strictly.
-            # If we can't load it, we should immediately throw an error.
-            metadata = self.model.load(os.path.join(path, "final_model.pt"), strict=True)
-            current_step, steps, epochs = metadata["current_step"], metadata["steps"], metadata["epochs"]
-            # Try to load the xaxis value if we need to.
+            assert TypeError("Current SMODice does not support continual training because of the discriminator warmup")
+            # metadata = self.model.load(os.path.join(path, "final_model.pt"), strict=True)
+            # current_step, steps, epochs = metadata["current_step"], metadata["steps"], metadata["epochs"]
         else:
             current_step, steps, epochs = 0, 0, 0
 
@@ -131,6 +97,9 @@ class OfflineImitationTrainer(OfflineTrainer):
         last_checkpoint         = 0  # Start at 1 so we don't log the untrained model.
         profile                 = True if self.profile_freq > 0 else False  # must profile to get all keys for csv log
         self.model.train()
+
+        # train discriminator
+        self.warmup_discriminator()
 
         start_time      = time.time()
         current_time    = start_time

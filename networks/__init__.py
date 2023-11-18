@@ -16,3 +16,4 @@ from .contrastive       import ContrastiveGoalCritic, ContrastiveRLNetwork
 from .contrastiveoi     import ContrastiveV, ContrastiveQ, ContrastiveOfflineImitationNetwork
 from .contrastiveoi_v2  import ContrastiveOfflineImitationV2Network
 from .dwbc              import DWBCDiscriminator, DWBCNetwork
+from .smodice           import SMODICENetwork, SMODICE_Discriminator

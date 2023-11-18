@@ -1,3 +1,4 @@
 from .base import OfflineTrainer
 from .base import OnlineTrainer
-from .offlineimitation import OfflineImitationTrainer
+from .offlineimitation.base import OfflineImitationTrainer
+from .offlineimitation.smodice import SMODICETrainer

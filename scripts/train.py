@@ -24,7 +24,7 @@ def try_wandb_setup(path, config):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--path", "-p", type=str, default="oi_mujoco_ant_exp_rand_10/dwbc")
+    parser.add_argument("--path", "-p", type=str, default="oi_antmaze_umaze_exp_div_10/smodice")
     parser.add_argument('--notation', '-n', type=str, default=None)
     parser.add_argument("--device", "-d", type=str, default="auto")
     parser.add_argument("--seeds", '-s', type=int, nargs='+', default=[10])

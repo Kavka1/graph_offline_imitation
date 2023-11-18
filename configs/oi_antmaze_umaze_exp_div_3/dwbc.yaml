@@ -1,21 +1,19 @@
-alg: ContrastiveOfflineImitationV2
+alg: DWBCOfflineImitation
 alg_kwargs:
-  expert_bc_coef: 1
-  repr_penalty_coef: 0.
-  pess_coef: 0.01
-  adv_temperature: 1
-  adv_clip: 10
-  sparse_adv_lb: 1.
-  exp_proximity_aggregation: mean
+  alpha: 7.5
+  eta: 0.5
+  d_update_num: 100
+  log_pi_norm_min: -20.
+  log_pi_norm_max: 10.
 
 optim: Adam
 optim_kwargs:
   lr: 0.0003
 
-network: ContrastiveOfflineImitationV2Network
+network: DWBCNetwork
 network_kwargs:
-  policy_class: DiagonalGaussianMLPActor
-  policy_kwargs:
+  actor_class: DiagonalGaussianMLPActor
+  actor_kwargs:
     hidden_layers: [1024, 1024]
     log_std_bounds: [-5, 2]
     state_dependent_log_std: False
@@ -23,27 +21,28 @@ network_kwargs:
     squash_normal: False
     act: ["import", "torch.nn", "ReLU"]
     output_act: ["import", "torch.nn", "Tanh"]
-  qfunc_class: ContrastiveQ
-  qfunc_kwargs:
-    repr_dim: 16
-    ensemble_size: 2
-    repr_norm: False
-    repr_norm_temp: False
+  discr_class: DWBCDiscriminator
+  discr_kwargs:
+    repr_dim: 128
+    output_min: 0.1
+    output_max: 0.9
     ortho_init: False
     output_gain: none
+    hidden_layers: [256, 256]
+    output_act: null
+    act: ["import", "torch.nn", "ReLU"]
 
 # No train env, only eval env
 eval_env: antmaze-umaze-v0
 
 dataset: AntmazeExpDivDatasets
 dataset_kwargs:
-  name: antmaze_umaze_expdiv_10
+  name: antmaze_umaze_expdiv_3
   exp_use_goal: False
-  rand_use_goal: True
+  rand_use_goal: False
   batch_size: 512
-  discount: 1
+  discount: 0.99
   nstep: 1
-  relabel_fraction: 1.0
 
 processor: null
 

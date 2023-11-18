@@ -37,7 +37,7 @@ eval_env: antmaze-umaze-v0
 
 dataset: AntmazeExpDivDatasets
 dataset_kwargs:
-  name: antmaze_umaze_expdiv_10
+  name: antmaze_umaze_expdiv_1
   exp_use_goal: False
   rand_use_goal: True
   batch_size: 512

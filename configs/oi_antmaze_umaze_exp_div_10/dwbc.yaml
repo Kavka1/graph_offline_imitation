@@ -51,7 +51,7 @@ checkpoint: null # A checkpoint to initialize the model from
 
 trainer: OfflineImitationTrainer
 trainer_kwargs: # Arguments given to trainer
-  total_steps: 1000000 # GoFar saturates at 20*20*(500 epochs) = 200000k steps
+  total_steps: 350000 # GoFar saturates at 20*20*(500 epochs) = 200000k steps
   log_freq: 1000 # How often to log values
   eval_freq: 10000 # How often to run evals
   profile_freq: 1000

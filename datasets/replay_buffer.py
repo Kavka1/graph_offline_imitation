@@ -519,7 +519,9 @@ class ReplayBuffer(torch.utils.data.IterableDataset):
         return len(reward)
 
     def __iter__(self):
-        assert not hasattr(self, "_iterated"), "__iter__ called twice!"
+        if hasattr(self, '_iterated'):
+            print("[Warning]: __iter__ called twice!")
+        # assert not hasattr(self, "_iterated"), "__iter__ called twice!"
         self._iterated = True
         if self.distributed:
             # Allocate the buffer here.
@@ -609,6 +611,7 @@ class ReplayBuffer(torch.utils.data.IterableDataset):
         obs         = utils.get_from_batch(self._obs_buffer, obs_idxs)
         action      = utils.get_from_batch(self._action_buffer, idxs)
         reward      = np.zeros_like(self._reward_buffer[idxs])
+        done        = utils.get_from_batch(self._done_buffer, idxs)
         discount    = np.ones_like(self._discount_buffer[idxs])
         for i in range(self.nstep):
             reward   += discount * self._reward_buffer[idxs + i]
@@ -618,7 +621,8 @@ class ReplayBuffer(torch.utils.data.IterableDataset):
         if self.next_obs:
             kwargs["next_obs"] = utils.get_from_batch(self._obs_buffer, next_obs_idxs)
 
-        batch  = dict(obs=obs, action=action, reward=reward, discount=discount, **kwargs)
+        batch  = dict(obs=obs, action=action, reward=reward, done=done, discount=discount, **kwargs)
+
         if pad > 0:
             batch["mask"] = self._compute_mask(idxs)
 
@@ -816,6 +820,7 @@ class HindsightReplayBuffer(ReplayBuffer):
         kwargs["horizon"]   = horizon
         action              = utils.get_from_batch(self._action_buffer, idxs)
         reward              = np.zeros_like(idxs, dtype=np.float32)
+        done                = utils.get_from_batch(self._done_buffer, idxs)
         discount            = np.ones_like(idxs, dtype=np.float32)
         for i in range(self.nstep):
             achieved        = utils.get_from_batch(self._obs_buffer[self.achieved_key], idxs + i)
@@ -843,7 +848,7 @@ class HindsightReplayBuffer(ReplayBuffer):
         # TODO: support relabeling reward-to-go.
         assert "rtg" not in kwargs
 
-        batch = dict(obs=obs, action=action, reward=reward, discount=discount, **kwargs)
+        batch = dict(obs=obs, action=action, reward=reward, done=done, discount=discount, **kwargs)
         if batch_size == 1:
             batch = utils.squeeze(batch, 0)
         return batch

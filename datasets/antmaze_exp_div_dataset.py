@@ -69,6 +69,7 @@ class AntMazeDataset(ReplayBuffer):
         
         num_ep_added    = 0
 
+        init_obs_       = []
         obs_            = []
         action_         = [self.dummy_action]
         reward_         = [0.0]
@@ -77,12 +78,17 @@ class AntMazeDataset(ReplayBuffer):
         episode_step    = 0
 
         for i in range(dataset["rewards"].shape[0]):
+            if episode_step == 0:
+                initial_obs = dataset['observations'][i].astype(np.float32)
+
+            init_obs                = initial_obs.copy()
             obs                     = dataset["observations"][i].astype(np.float32)
             action                  = dataset["actions"][i].astype(np.float32)
             reward                  = dataset["rewards"][i].astype(np.float32)
             terminal                = bool(dataset["terminals"][i])
             done                    = dataset["timeouts"][i]
 
+            init_obs_.append(init_obs)
             obs_.append(obs)
             action_.append(action)
             reward_.append(reward)
@@ -93,6 +99,7 @@ class AntMazeDataset(ReplayBuffer):
             if done:
                 if "next_observations" in dataset:
                     obs_.append(dataset["next_observations"][i].astype(np.float32))
+                    init_obs_.append(init_obs)
                 else:
                     # We need to do something to pad to the full length.
                     # The default solution is to get rid of this transition
@@ -100,6 +107,7 @@ class AntMazeDataset(ReplayBuffer):
                     # implementation to work.
                     # Since we always end up masking this out anyways, it shouldn't matter and we can just repeat
                     obs_.append(dataset["observations"][i].astype(np.float32))
+                    init_obs_.append(init_obs)
 
                 obs_    = np.stack(obs_, axis=0).astype(np.float32)
                 action_ = np.stack(action_, axis=0).astype(np.float32)
@@ -109,12 +117,16 @@ class AntMazeDataset(ReplayBuffer):
                 discount_   = np.array(discount_).astype(np.float32)
                 done_       = np.array(done_, dtype=np.bool_)
                 kwargs      = dict()
+                # add init obs to kwargs
+                kwargs['initial_obs'] = np.array(init_obs_).astype(np.float32)
+
                 # Compute the ground truth horizon metrics
                 if len(reward_) > 3:
                     # print("yielded")
                     yield (obs_, action_, reward_, done_, discount_, kwargs)
 
                 # reset the episode trackers
+                init_obs_       = []
                 obs_            = []
                 action_         = [self.dummy_action]
                 reward_         = [0.0]
@@ -171,6 +183,7 @@ class AntMazeGoalCondDataset(HindsightReplayBuffer):
         
         num_ep_added    = 0
 
+        init_obs_       = []
         obs_            = []
         ag_             = []
         g_              = []
@@ -181,6 +194,10 @@ class AntMazeGoalCondDataset(HindsightReplayBuffer):
         episode_step    = 0
 
         for i in range(dataset["rewards"].shape[0]):
+            if episode_step == 0:
+                initial_obs         = dataset['observations'][i].astype(np.float32)
+
+            init_obs                = initial_obs.copy()
             obs                     = dataset["observations"][i].astype(np.float32)
             achieved_goal           = dataset["observations"][i].astype(np.float32)     # use the full obs as achieved goal
             desired_goal            = dataset["infos/goal"][i].astype(np.float32)       # init as all zeros before relabelling
@@ -190,6 +207,7 @@ class AntMazeGoalCondDataset(HindsightReplayBuffer):
             terminal                = bool(dataset["terminals"][i])
             done                    = dataset["timeouts"][i]
 
+            init_obs_.append(init_obs)
             obs_.append(obs)
             ag_.append(achieved_goal)
             g_.append(desired_goal)
@@ -206,6 +224,7 @@ class AntMazeGoalCondDataset(HindsightReplayBuffer):
                     ag_.append(dataset["next_observations"][i].astype(np.float32))
                     temp_g  = np.zeros_like(dataset["next_observations"][i, :2].astype(np.float32))
                     g_.append(temp_g)
+                    init_obs_.append(init_obs)
                 else:
                     # We need to do somethign to pad to the full length.
                     # The default solution is to get rid of this transtion
@@ -216,6 +235,7 @@ class AntMazeGoalCondDataset(HindsightReplayBuffer):
                     ag_.append(dataset["observations"][i].astype(np.float32))
                     temp_g     = np.zeros_like(dataset["observations"][i, :2].astype(np.float32))
                     g_.append(temp_g)
+                    init_obs_.append(init_obs)
 
                 dict_obs = {
                     "observation":      np.stack(obs_, axis=0).astype(np.float32),
@@ -235,13 +255,15 @@ class AntMazeGoalCondDataset(HindsightReplayBuffer):
                 starts      = np.concatenate(([0], ends[:-1] + 1))
                 for start, end in zip(starts, ends):
                     horizon[start : end + 1] = np.arange(end - start + 1, 0, -1)
-                kwargs["horizon"] = horizon
+                kwargs["horizon"]       = horizon
+                kwargs['initial_obs']   = np.array(init_obs_).astype(np.float32)
 
                 if len(reward_) > 3:
                     # print("yielded")
                     yield (dict_obs, action_, reward_, done_, discount_, kwargs)
 
                 # reset the episode trackers
+                init_obs_       = []
                 obs_            = []
                 ag_             = []
                 g_              = []
@@ -458,22 +480,14 @@ def make_antmaze_exp_diverse_dataset(
 
 
 if __name__ == "__main__":
-    # for maze in [
-    #     'umaze',
-    # ]:
-    #     for num_exp_traj in [
-    #         3,
-    #         5, 
-    #         10,
-    #         20,
-    #     ]:
-    #         make_antmaze_exp_diverse_dataset(maze, num_exp_traj)
-    dataset = {}
-    dataset_path = f"{Path(__file__).resolve().parent}/assets/antmaze_umaze_expdiv_10/diverse.hdf5"
-    with h5py.File(dataset_path, 'r') as dataset_file:
-        for k in tqdm(get_keys(dataset_file), desc="load datafile"):
-            try:  # first try loading as an array
-                dataset[k] = dataset_file[k][:]
-            except ValueError as e:  # try loading as a scalar
-                dataset[k] = dataset_file[k][()]
-    print('over')
+    for maze in [
+        'umaze',
+    ]:
+        for num_exp_traj in [
+            1,
+            # 3,
+            # 5, 
+            # 10,
+            # 20,
+        ]:
+            make_antmaze_exp_diverse_dataset(maze, num_exp_traj)
