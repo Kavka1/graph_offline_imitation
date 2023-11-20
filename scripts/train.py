@@ -31,12 +31,6 @@ def try_wandb_setup(path, config):
             dir     =   path,
             # config  =   config
         )
-        # wandb.init(
-        #     project=os.path.basename(project_dir),
-        #     name=os.path.basename(path),
-        #     config=config.flatten(separator="-"),
-        #     dir=os.path.join(os.path.dirname(project_dir), "wandb"),
-        # )
         return wb
     else:
         return None
@@ -44,7 +38,7 @@ def try_wandb_setup(path, config):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--path", "-p", type=str, default="oi_antmaze_umaze_exp_div_1/bc_all")
+    parser.add_argument("--path", "-p", type=str, default="oi_adroit_pen_human_3/contrastiveoi_v2")
     parser.add_argument('--notation', '-n', type=str, default=None)
     parser.add_argument("--device", "-d", type=str, default="auto")
     parser.add_argument("--seeds", '-s', type=int, nargs='+', default=[8])

@@ -31,6 +31,7 @@ env2exp = {
 
 alg2exp = {
     'BC-all':                   'bc_all',
+    'ORIL':                     'oril',
     'DWBC':                     'dwbc',
     'SMODICE':                  'smodice',
     'ContrastiveOI-V2':         'contrastiveoi_v2',
@@ -38,6 +39,7 @@ alg2exp = {
 
 alg2color = {
     'BC-all':                   'green',
+    'ORIL':                     'grey',
     'ContrastiveOI-V2':         'darkorange',
     'DWBC':                     'cornflowerblue',
     'SMODICE':                  '#23191a'
@@ -58,10 +60,10 @@ def plot_perf_bars():
 
     width    = 0.1
     ax.set_xlim(0, 2.5)
-    x_tick_pos  =   np.array([0.6 * i_env + 0.2 + width for i_env in range(len(ALL_ENV))])
+    x_tick_pos  =   np.array([0.75 * i_env + 0.4 + width for i_env in range(len(ALL_ENV))])
     ax.set_xticks(x_tick_pos)
     ax.set_xticklabels(ALL_ENV, rotation=60, ha='right')
-    initial_x_ticks = x_tick_pos - width * 1.5
+    initial_x_ticks = x_tick_pos - width * 2
     
     all_algs = list(alg2exp.keys())
     for i_alg, alg in enumerate(all_algs):
@@ -76,12 +78,13 @@ def plot_perf_bars():
             
             seeds = all_seeds
             for seed in seeds:
-                exp_path = RESULT_PATH + f"{env2exp[env]}/" + f'{alg2exp[alg]}_{seed}/'
+                exp_path = RESULT_PATH + f"{env2exp[env]}/" + f'{alg2exp[alg]}-{seed}/'
 
                 with open(exp_path + 'log.csv', 'rb') as f:
                     log = pd.read_csv(f)
 
-                rewards = log['eval/reward']
+                # rewards = log['eval/reward']
+                rewards = log['eval/score']
                 
                 scores_across_seeds.append(np.max(rewards))
 

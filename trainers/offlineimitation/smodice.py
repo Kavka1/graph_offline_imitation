@@ -45,6 +45,7 @@ class SMODICETrainer(OfflineImitationTrainer):
         self.model.setup()  # perform any other arbitrary setup needs.
         print("[research] Training a model with", self.model.num_params, "trainable parameters.")
         print("[research] Estimated size: {:.2f} GB".format(self.model.nbytes / 1024**3))
+        print("[research] Running on Device ", self.model.device.type)
 
         # First, we should detect if the path already contains a model and a checkpoint
         if os.path.exists(os.path.join(path, "final_model.pt")):

@@ -14,7 +14,7 @@ from graph_offline_imitation.utils                      import utils
 class ContrastiveOfflineImitationV2(OfflineImitation):
     def __init__(
         self,
-        eval_env,
+        *args,
         expert_bc_coef:     float    = 0.5,
         adv_temperature:    float    = 1,
         adv_clip:           float    = 100,
@@ -26,7 +26,7 @@ class ContrastiveOfflineImitationV2(OfflineImitation):
         **kwargs,
     ) -> None:
         # After determining dimension parameters, setup the network
-        super().__init__(eval_env, **kwargs)
+        super().__init__(*args, **kwargs)
         assert encoder_gradients in ("actor", "critic", "both")
         assert exp_proximity_aggregation in ('mean', 'min', 'max')
         self.encoder_gradients   = encoder_gradients        

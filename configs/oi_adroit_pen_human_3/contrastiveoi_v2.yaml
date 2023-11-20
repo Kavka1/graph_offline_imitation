@@ -1,0 +1,73 @@
+alg: ContrastiveOfflineImitationV2
+alg_kwargs:
+  expert_bc_coef: 1
+  repr_penalty_coef: 0.
+  pess_coef: 0.01
+  adv_temperature: 1
+  adv_clip: 10
+  sparse_adv_lb: 1.
+  exp_proximity_aggregation: mean
+
+optim: Adam
+optim_kwargs:
+  lr: 0.0003
+
+network: ContrastiveOfflineImitationV2Network
+network_kwargs:
+  policy_class: DiagonalGaussianMLPActor
+  policy_kwargs:
+    hidden_layers: [1024, 1024]
+    log_std_bounds: [-5, 2]
+    state_dependent_log_std: False
+    log_std_tanh: False
+    squash_normal: False
+    act: ["import", "torch.nn", "ReLU"]
+    output_act: ["import", "torch.nn", "Tanh"]
+  qfunc_class: ContrastiveQ
+  qfunc_kwargs:
+    repr_dim: 16
+    ensemble_size: 2
+    repr_norm: False
+    repr_norm_temp: False
+    ortho_init: False
+    output_gain: none
+
+# No train env, only eval env
+eval_env: pen-human-v1
+
+dataset: AdroitHumanDatasets
+dataset_kwargs:
+  name: adroit_pen_human_3
+  exp_use_goal: False
+  rand_use_goal: True
+  batch_size: 512
+  discount: 1
+  nstep: 1
+  relabel_fraction: 1.0
+
+processor: null
+
+schedule: null # A learning rate schedule
+checkpoint: null # A checkpoint to initialize the model from
+
+trainer: OfflineImitationTrainer
+trainer_kwargs: # Arguments given to trainer
+  total_steps: 350000 # GoFar saturates at 20*20*(500 epochs) = 200000k steps
+  log_freq: 1000 # How often to log values
+  eval_freq: 10000 # How often to run evals
+  profile_freq: 1000
+  checkpoint_freq: 100000
+  eval_fn: eval_policy
+  eval_kwargs:
+    num_ep: 20 # Number of enviornment episodes to run for evaluation, or -1 if none should be run.
+  loss_metric: reward # The validation metric that determines when to save the "best_checkpoint"
+  expert_dataloader_kwargs:
+    num_workers: 0 # Number of dataloader workers.
+    batch_size: null
+    collate_fn: null
+  unlabel_dataloader_kwargs:
+    num_workers: 0 # Number of dataloader workers.
+    batch_size: null
+    collate_fn: null
+
+seed: null
