@@ -14,7 +14,7 @@ from graph_offline_imitation.utils                      import utils
 class DWBCOfflineImitation(OfflineImitation):
     def __init__(
         self,
-        eval_env,
+        *args,
         alpha:              float    = 7.5,
         eta:                float    = 1.5,
         d_update_num:       int      = 100,
@@ -24,7 +24,7 @@ class DWBCOfflineImitation(OfflineImitation):
         **kwargs,
     ) -> None:
         # After determining dimension parameters, setup the network
-        super().__init__(eval_env, **kwargs)
+        super().__init__(*args, **kwargs)
         assert encoder_gradients in ("actor", "critic", "both", 'null')
         self.encoder_gradients   = encoder_gradients        
         self.alpha               = alpha

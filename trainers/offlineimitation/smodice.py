@@ -37,7 +37,7 @@ class SMODICETrainer(OfflineImitationTrainer):
             if total_disc_step > self.disc_steps:
                 break
 
-    def train(self, path: str):
+    def train(self, path: str, wb = None):
         # Prepare the model for training by initializing the optimizers and the schedulers
         self.model.setup_optimizers()
         self.check_compilation()

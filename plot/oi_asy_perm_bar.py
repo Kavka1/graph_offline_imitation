@@ -17,23 +17,29 @@ plt.rcParams['axes.facecolor'] = '#f5f6fa'
 
 RESULT_PATH = '/home/PJLAB/kang/proj/graph_offline_imitation/results/'
 
+FIGNAME     = 'Adroit_temp'
+
 ALL_ENV = [
-    "AntMaze-ExpDiv-10",
-    'AntMaze-ExpDiv-3',
-    'AntMaze-ExpDiv-1'
+    # "AntMaze-ExpDiv-10",
+    # 'AntMaze-ExpDiv-3',
+    # 'AntMaze-ExpDiv-1',
+    
+    'Adroit-Pen-Human-3',
 ]
 
 env2exp = {
-    'AntMaze-ExpDiv-10':        'oi_antmaze_umaze_exp_div_10',
-    'AntMaze-ExpDiv-3':         'oi_antmaze_umaze_exp_div_3',
-    'AntMaze-ExpDiv-1':         'oi_antmaze_umaze_exp_div_1',
+    # 'AntMaze-ExpDiv-10':        'oi_antmaze_umaze_exp_div_10',
+    # 'AntMaze-ExpDiv-3':         'oi_antmaze_umaze_exp_div_3',
+    # 'AntMaze-ExpDiv-1':         'oi_antmaze_umaze_exp_div_1',
+
+    'Adroit-Pen-Human-3':       'oi_adroit_pen_human_3',
 }
 
 alg2exp = {
     'BC-all':                   'bc_all',
     'ORIL':                     'oril',
-    'DWBC':                     'dwbc',
-    'SMODICE':                  'smodice',
+    # 'DWBC':                     'dwbc',
+    # 'SMODICE':                  'smodice',
     'ContrastiveOI-V2':         'contrastiveoi_v2',
 }
 
@@ -49,9 +55,9 @@ alg2color = {
 all_seeds = [
     10,
     11,
-    12,
-    13,
-    14,
+    # 12,
+    # 13,
+    # 14,
 ]
 
 
@@ -123,7 +129,7 @@ def plot_perf_bars():
     # for tick in ax.yaxis.get_major_ticks():
     #     tick.label.set_fontsize(12) 
 
-    fig.savefig(f"{Path(__file__).resolve().parent}/temp.png")
+    fig.savefig(f"{Path(__file__).resolve().parent}/{FIGNAME}.png")
 
     plt.show()
 

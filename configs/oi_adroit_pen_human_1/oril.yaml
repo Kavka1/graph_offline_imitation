@@ -1,0 +1,77 @@
+alg: ORILOfflineImitation
+alg_kwargs:
+    gamma: 0.99
+    tau: 0.005
+    policy_noise: 0.2
+    noise_clip: 0.5
+    policy_freq: 2
+    alpha: 2.5
+
+optim: Adam
+optim_kwargs:
+  lr: 0.0003
+
+network: ORILNetwork
+network_kwargs:
+  actor_class: DiagonalGaussianMLPActor
+  actor_kwargs:
+    hidden_layers: [1024, 1024]
+    log_std_bounds: [-5, 2]
+    state_dependent_log_std: False
+    log_std_tanh: False
+    squash_normal: False
+    act: ["import", "torch.nn", "ReLU"]
+    output_act: ["import", "torch.nn", "Tanh"]
+  discr_class: ORILDiscriminator
+  discr_kwargs:
+    repr_dim: 128
+    ortho_init: False
+    output_gain: none
+    hidden_layers: [256, 256]
+    output_act: null
+    act: ["import", "torch.nn", "Tanh"]
+  critic_class: ContinuousMLPCritic
+  critic_kwargs:
+    ensemble_size: 2
+    hidden_layers: [256, 256]
+    act: ["import", "torch.nn", "ReLU"]
+
+# No train env, only eval env
+eval_env: pen-human-v1
+
+dataset: AdroitHumanDatasets
+dataset_kwargs:
+  name: adroit_pen_human_1
+  exp_use_goal: False
+  rand_use_goal: False
+  batch_size: 512
+  discount: 0.99
+  nstep: 1
+
+processor: null
+
+schedule: null # A learning rate schedule
+checkpoint: null # A checkpoint to initialize the model from
+
+trainer: ORILTrainer
+trainer_kwargs: # Arguments given to trainer
+  total_steps: 350000 # GoFar saturates at 20*20*(500 epochs) = 200000k steps
+  log_freq: 1000 # How often to log values
+  eval_freq: 10000 # How often to run evals
+  profile_freq: 1000
+  checkpoint_freq: 200000
+  eval_fn: eval_policy
+  eval_kwargs:
+    num_ep: 20 # Number of enviornment episodes to run for evaluation, or -1 if none should be run.
+  loss_metric: reward # The validation metric that determines when to save the "best_checkpoint"
+  expert_dataloader_kwargs:
+    num_workers: 0 # Number of dataloader workers.
+    batch_size: null
+    collate_fn: null
+  unlabel_dataloader_kwargs:
+    num_workers: 0 # Number of dataloader workers.
+    batch_size: null
+    collate_fn: null
+  disc_steps: 2500
+
+seed: null
