@@ -97,23 +97,33 @@ class CSVWriter(Writer):
 
 
 class WandBWriter(Writer):
-    def __init__(self, path: str, on_eval: bool = True):
+    def __init__(self, path: str, on_eval: bool = True, wb = None,):
+        self.wb = wb
         super().__init__(path, on_eval=on_eval)
         # No extra init steps, just mark eval as True
 
     def _dump(self, step: int) -> None:
-        wandb.log(self.values, step=step)
+        if self.wb:
+            self.wb.log(self.values, step=step)
+        else:
+            wandb.log(self.values, step=step)
         self.values.clear()  # reset the values
 
     def close(self) -> None:
-        wandb.finish()
+        if self.wb:
+            self.wb.finish()
+        else:
+            wandb.finish()
 
 
 class Logger(object):
-    def __init__(self, path: str, writers: List[str] = ["tb", "csv"]):
+    def __init__(self, path: str, writers: List[str] = ["tb", "csv"], wb = None):
         self.writers = []
         for writer in writers:
-            self.writers.append({"tb": TensorBoardWriter, "csv": CSVWriter, "wandb": WandBWriter}[writer](path))
+            if writer == 'wandb':
+                self.writers.append(WandBWriter(path, wb))
+            else:
+                self.writers.append({"tb": TensorBoardWriter, "csv": CSVWriter}[writer](path))
 
     def record(self, key: str, value: Any) -> None:
         for writer in self.writers:

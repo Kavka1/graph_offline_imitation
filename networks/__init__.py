@@ -17,3 +17,5 @@ from .contrastiveoi     import ContrastiveV, ContrastiveQ, ContrastiveOfflineImi
 from .contrastiveoi_v2  import ContrastiveOfflineImitationV2Network
 from .dwbc              import DWBCDiscriminator, DWBCNetwork
 from .smodice           import SMODICENetwork, SMODICE_Discriminator
+from .oril              import ORILNetwork, ORILDiscriminator
+from .bc                import BCNetwork

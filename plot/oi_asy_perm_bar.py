@@ -3,7 +3,7 @@ import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
 import pickle
-
+import os
 from typing import List, Dict, Tuple
 import pickle
 import numpy as np
@@ -19,22 +19,28 @@ RESULT_PATH = '/home/PJLAB/kang/proj/graph_offline_imitation/results/'
 
 ALL_ENV = [
     "AntMaze-ExpDiv-10",
-    'AntMaze-ExpDiv-3'
+    'AntMaze-ExpDiv-3',
+    'AntMaze-ExpDiv-1'
 ]
 
 env2exp = {
     'AntMaze-ExpDiv-10':        'oi_antmaze_umaze_exp_div_10',
     'AntMaze-ExpDiv-3':         'oi_antmaze_umaze_exp_div_3',
+    'AntMaze-ExpDiv-1':         'oi_antmaze_umaze_exp_div_1',
 }
 
 alg2exp = {
+    'BC-all':                   'bc_all',
     'DWBC':                     'dwbc',
+    'SMODICE':                  'smodice',
     'ContrastiveOI-V2':         'contrastiveoi_v2',
 }
 
 alg2color = {
+    'BC-all':                   'green',
     'ContrastiveOI-V2':         'darkorange',
-    'DWBC':                     'cornflowerblue'
+    'DWBC':                     'cornflowerblue',
+    'SMODICE':                  '#23191a'
 }
 
 
@@ -50,12 +56,12 @@ all_seeds = [
 def plot_perf_bars():
     fig, ax  = plt.subplots(1, 1, figsize=((len(ALL_ENV) + 2) * 1.25, 5), tight_layout=True,)
 
-    width    = 0.2
-    ax.set_xlim(0, 3)
+    width    = 0.1
+    ax.set_xlim(0, 2.5)
     x_tick_pos  =   np.array([0.6 * i_env + 0.2 + width for i_env in range(len(ALL_ENV))])
     ax.set_xticks(x_tick_pos)
     ax.set_xticklabels(ALL_ENV, rotation=60, ha='right')
-    initial_x_ticks = x_tick_pos - width * 0.5
+    initial_x_ticks = x_tick_pos - width * 1.5
     
     all_algs = list(alg2exp.keys())
     for i_alg, alg in enumerate(all_algs):
@@ -82,7 +88,7 @@ def plot_perf_bars():
             score_mean.append(np.mean(scores_across_seeds))
             score_std.append(np.std(scores_across_seeds) * 0.95 / 2)
 
-        print(f"{env} - {alg} : {score_mean[-1]} ({score_std[-1]})")
+            print(f"{env} - {alg} : {score_mean[-1]} ({score_std[-1]})")
 
         ax.bar(
             initial_x_ticks + width * i_alg, 
@@ -114,7 +120,10 @@ def plot_perf_bars():
     # for tick in ax.yaxis.get_major_ticks():
     #     tick.label.set_fontsize(12) 
 
+    fig.savefig(f"{Path(__file__).resolve().parent}/temp.png")
+
     plt.show()
+
     
 
 

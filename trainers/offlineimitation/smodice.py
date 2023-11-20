@@ -60,15 +60,18 @@ class SMODICETrainer(OfflineImitationTrainer):
 
         # Setup the Logger
         writers = ["tb", "csv"]
-        try:
-            # Detect if wandb has been setup. If so, log it.
-            import wandb
-            if wandb.run is not None:
-                writers.append("wandb")
-        except:
-            pass
+        if wb is not None:
+            writers.append('wandb')
+        else:
+            try:
+                # Detect if wandb has been setup. If so, log it.
+                import wandb
+                if wandb.run is not None:
+                    writers.append("wandb")
+            except:
+                pass
 
-        logger = Logger(path=path, writers=writers)
+        logger = Logger(path=path, writers=writers, wb=wb)
 
         # Construct all of the metric lists to be used during training
         # Construct all the metric lists to be used during training

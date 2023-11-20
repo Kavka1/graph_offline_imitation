@@ -1,15 +1,12 @@
-alg: SMODiceOfflineImitation
+alg: BCOfflineImitation
 alg_kwargs:
-    gamma: 0.99
-    use_entropy_constraint: True
-    f_func: chi
-    v_l2_reg: 0.0001
+  use_data: all
 
 optim: Adam
 optim_kwargs:
   lr: 0.0003
 
-network: SMODICENetwork
+network: BCNetwork
 network_kwargs:
   actor_class: DiagonalGaussianMLPActor
   actor_kwargs:
@@ -20,30 +17,17 @@ network_kwargs:
     squash_normal: False
     act: ["import", "torch.nn", "ReLU"]
     output_act: ["import", "torch.nn", "Tanh"]
-  discr_class: SMODICE_Discriminator
-  discr_kwargs:
-    repr_dim: 128
-    ortho_init: False
-    output_gain: none
-    hidden_layers: [256, 256]
-    output_act: null
-    act: ["import", "torch.nn", "Tanh"]
-  value_class: MLPValue
-  value_kwargs:
-    ensemble_size: 1
-    hidden_layers: [256, 256]
-    act: ["import", "torch.nn", "ReLU"]
 
 # No train env, only eval env
 eval_env: antmaze-umaze-v0
 
 dataset: AntmazeExpDivDatasets
 dataset_kwargs:
-  name: antmaze_umaze_expdiv_10
+  name: antmaze_umaze_expdiv_1
   exp_use_goal: False
   rand_use_goal: False
   batch_size: 512
-  discount: 0.99
+  discount: 1
   nstep: 1
 
 processor: null
@@ -51,13 +35,13 @@ processor: null
 schedule: null # A learning rate schedule
 checkpoint: null # A checkpoint to initialize the model from
 
-trainer: SMODICETrainer
+trainer: OfflineImitationTrainer
 trainer_kwargs: # Arguments given to trainer
   total_steps: 350000 # GoFar saturates at 20*20*(500 epochs) = 200000k steps
   log_freq: 1000 # How often to log values
   eval_freq: 10000 # How often to run evals
   profile_freq: 1000
-  checkpoint_freq: 200000
+  checkpoint_freq: 100000
   eval_fn: eval_policy
   eval_kwargs:
     num_ep: 20 # Number of enviornment episodes to run for evaluation, or -1 if none should be run.
@@ -70,6 +54,5 @@ trainer_kwargs: # Arguments given to trainer
     num_workers: 0 # Number of dataloader workers.
     batch_size: null
     collate_fn: null
-  disc_steps: 2500
 
 seed: null
